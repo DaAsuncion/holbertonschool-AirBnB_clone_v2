@@ -1,65 +1,48 @@
 #!/usr/bin/python3
-"""Fabric script  that distributes an
-archive to your web servers, using the function do_deploy:
-"""
-from fabric.api import *
-from os import path
+# Fabfile to distribute an archive to a web server.
+import os.path
+from fabric.api import env
+from fabric.api import put
+from fabric.api import run
 
-env.hosts = ['35.175.196.152', '34.201.143.161']
+env.hosts = ["104.196.168.90", "35.196.46.172"]
 
 
 def do_deploy(archive_path):
-    """Deploys archives to servers
+    """Distributes an archive to a web server.
+    Args:
+        archive_path (str): The path of the archive to distribute.
+    Returns:
+        If the file doesn't exist at archive_path or an error occurs - False.
+        Otherwise - True.
     """
-    if not path.exists(archive_path) or not path.isfile(archive_path):
+    if os.path.isfile(archive_path) is False:
         return False
-    ret_value = True
-    # Set the folder
-    d_folder = put(archive_path, '/tmp/')
-    if d_folder.failed:
-        ret_value = False
-    # Prepare the file name and the destination folder
-    archive_file = archive_path.replace(".tgz", "").replace("versions/", "")
-    d_dest = run('mkdir -p /data/web_static/releases/' + archive_file + '/')
-    if d_dest.failed:
-        ret_value = False
-    # Upload the archive to the /tmp/ directory of the web server
-    # Uncompress the archive to the folder
-    # /data/web_static/releases/<archive filename without extension>
-    # on the web server
-    d_unpack = run('tar -xzf /tmp/' + archive_file + '.tgz' +
-                   ' -C /data/web_static/releases/' + archive_file + '/')
-    if d_unpack.failed:
-        ret_value = False
-    # Delete the archive from the web server
-    d_cleanfile = run('rm /tmp/' + archive_file + '.tgz')
-    if d_cleanfile.failed:
-        ret_value = False
-    # The files are created under a web_static folder move it.
-    d_move = run('cp -R /data/web_static/releases/' + archive_file +
-                 '/web_static/* /data/web_static/releases/' + archive_file +
-                 '/')
-    d_del = run('rm -rf /data/web_static/releases/' + archive_file +
-                '/web_static')
-    if d_move.failed or d_del.failed:
-        ret_value = False
-    # Remove the now empty folder
-    d_cleanfolder = run('rm -rf /data/web_static/releases/' + archive_file +
-                        '/web_static')
-    if d_cleanfolder.failed:
-        ret_value = False
-    # Delete the symbolic link /data/web_static/current from the web server
-    d_removeold = run('rm -rf /data/web_static/current')
-    if d_removeold.failed:
-        ret_value = False
-    # Create a new the symbolic link /data/web_static/current on the
-    # web server, linked to the new version of your code
-    # (/data/web_static/releases/<archive filename without extension>)
-    d_createnew = run('ln -sf /data/web_static/releases/' + archive_file +
-                      '/' + ' /data/web_static/current')
-    if d_createnew.failed:
-        ret_value = False
-    # All set
-    # if ret_value:
-    #     print("All tasks succeeded!")
-    return ret_value
+    file = archive_path.split("/")[-1]
+    name = file.split(".")[0]
+
+    if put(archive_path, "/tmp/{}".format(file)).failed is True:
+        return False
+    if run("rm -rf /data/web_static/releases/{}/".
+           format(name)).failed is True:
+        return False
+    if run("mkdir -p /data/web_static/releases/{}/".
+           format(name)).failed is True:
+        return False
+    if run("tar -xzf /tmp/{} -C /data/web_static/releases/{}/".
+           format(file, name)).failed is True:
+        return False
+    if run("rm /tmp/{}".format(file)).failed is True:
+        return False
+    if run("mv /data/web_static/releases/{}/web_static/* "
+           "/data/web_static/releases/{}/".format(name, name)).failed is True:
+        return False
+    if run("rm -rf /data/web_static/releases/{}/web_static".
+           format(name)).failed is True:
+        return False
+    if run("rm -rf /data/web_static/current").failed is True:
+        return False
+    if run("ln -s /data/web_static/releases/{}/ /data/web_static/current".
+           format(name)).failed is True:
+        return False
+    return True

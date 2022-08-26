@@ -1,65 +1,75 @@
 #!/usr/bin/python3
-"""module that compress using fabric"""
-
-from fabric.api import *
+# Fabfile to create and distribute an archive to a web server.
+import os.path
 from datetime import datetime
-from sys import argv
-import os
+from fabric.api import env
+from fabric.api import local
+from fabric.api import put
+from fabric.api import run
 
-env.hosts = ["34.201.143.161", "35.175.196.152"]
+env.hosts = ["104.196.168.90", "35.196.46.172"]
 
 
 def do_pack():
-    """funtion compress file"""
-    try:
-        date = datetime.utcnow().strftime('%Y%m%d%H%M%S')
-        local("sudo mkdir -p versions")
-        local("sudo tar -cvzf versions/web_static_{}.tgz web_static".format(
-            date))
-        return "versions/web_static_{}.tgz".format(date)
-    except Exception:
+    """Create a tar gzipped archive of the directory web_static."""
+    dt = datetime.utcnow()
+    file = "versions/web_static_{}{}{}{}{}{}.tgz".format(dt.year,
+                                                         dt.month,
+                                                         dt.day,
+                                                         dt.hour,
+                                                         dt.minute,
+                                                         dt.second)
+    if os.path.isdir("versions") is False:
+        if local("mkdir -p versions").failed is True:
+            return None
+    if local("tar -cvzf {} web_static".format(file)).failed is True:
         return None
+    return file
 
 
 def do_deploy(archive_path):
-    """function send file"""
-    if not os.path.exists(archive_path) or not os.path.isfile(archive_path):
+    """Distributes an archive to a web server.
+    Args:
+        archive_path (str): The path of the archive to distribute.
+    Returns:
+        If the file doesn't exist at archive_path or an error occurs - False.
+        Otherwise - True.
+    """
+    if os.path.isfile(archive_path) is False:
         return False
+    file = archive_path.split("/")[-1]
+    name = file.split(".")[0]
 
-    file = os.path.basename(archive_path)
-    try:
-        put(archive_path, "/tmp/")
-
-        file = file.split(".")
-
-        run("mkdir -p /data/web_static/releases/" + file[0])
-
-        run("tar -xzf /tmp/" + file[0] + "." + file[1] +
-            " -C " + "/data/web_static/releases/" + file[0])
-
-        run("rm -rf /tmp/" + file[0] + "." + file[1])
-
-        source = "/data/web_static/releases/" + file[0] + "/web_static/* "
-        dest = "/data/web_static/releases/" + file[0]
-        run("cp -R " + source + dest)
-
-        run("rm -rf /data/web_static/releases/" + file[0] + "/web_static")
-
-        run("rm -f /data/web_static/current")
-
-        source = "/data/web_static/releases/" + file[0]
-        dest = " /data/web_static/current"
-        run("ln -s " + source + dest)
-
-    except Exception:
+    if put(archive_path, "/tmp/{}".format(file)).failed is True:
+        return False
+    if run("rm -rf /data/web_static/releases/{}/".
+           format(name)).failed is True:
+        return False
+    if run("mkdir -p /data/web_static/releases/{}/".
+           format(name)).failed is True:
+        return False
+    if run("tar -xzf /tmp/{} -C /data/web_static/releases/{}/".
+           format(file, name)).failed is True:
+        return False
+    if run("rm /tmp/{}".format(file)).failed is True:
+        return False
+    if run("mv /data/web_static/releases/{}/web_static/* "
+           "/data/web_static/releases/{}/".format(name, name)).failed is True:
+        return False
+    if run("rm -rf /data/web_static/releases/{}/web_static".
+           format(name)).failed is True:
+        return False
+    if run("rm -rf /data/web_static/current").failed is True:
+        return False
+    if run("ln -s /data/web_static/releases/{}/ /data/web_static/current".
+           format(name)).failed is True:
         return False
     return True
 
 
 def deploy():
-    """function compress and send file"""
-    path = do_pack()
-    if path is None:
+    """Create and distribute an archive to a web server."""
+    file = do_pack()
+    if file is None:
         return False
-    status = do_deploy(path)
-    return status
+    return do_deploy(file)
